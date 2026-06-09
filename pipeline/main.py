@@ -267,7 +267,15 @@ def upload_to_youtube(short_path, metadata):
     from googleapiclient.discovery import build as oauth_build
     from google.oauth2.credentials import Credentials
 
-    creds = Credentials.from_authorized_user_file("oauth_token.json")
+    import tempfile
+oauth_data = os.getenv("OAUTH_TOKEN")
+if oauth_data:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        f.write(oauth_data)
+        token_path = f.name
+else:
+    token_path = "oauth_token.json"
+creds = Credentials.from_authorized_user_file(token_path)
     youtube_upload = oauth_build("youtube", "v3", credentials=creds)
 
     body = {
