@@ -37,7 +37,7 @@ def load_persisted():
             stats.update(json.load(f))
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE) as f:
-            bot_logs = json.load(f)[-100:]  # Keep last 100 logs
+            bot_logs = json.load(f)[-100:]
 
 def save_stats():
     with open(STATS_FILE, "w") as f:
@@ -51,14 +51,14 @@ def add_log(message, level="info"):
         "level": level
     }
     bot_logs.append(log)
-    bot_logs = bot_logs[-200:]  # Keep last 200
+    bot_logs = bot_logs[-200:]
     with open(LOG_FILE, "w") as f:
         json.dump(bot_logs, f)
 
 def run_bot():
     global bot_process, bot_status, stats
     bot_status = "running"
-    add_log("🤖 RepostAI Bot started", "success")
+    add_log("RepostAI Bot started", "success")
     stats["last_run"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     save_stats()
 
@@ -79,12 +79,12 @@ def run_bot():
             level = "info"
             if "ERROR" in line or "error" in line.lower():
                 level = "error"
-            elif "✅" in line or "Uploaded" in line or "Done" in line:
+            elif "Uploaded" in line or "Done" in line:
                 level = "success"
                 if "Uploaded" in line:
                     stats["shorts_uploaded"] += 1
                     save_stats()
-            elif "⬇️" in line or "Processing" in line:
+            elif "Processing" in line:
                 level = "processing"
                 if "Processing" in line:
                     stats["videos_processed"] += 1
@@ -97,8 +97,6 @@ def run_bot():
     finally:
         bot_status = "stopped"
         add_log("Bot stopped", "warning")
-
-# ─── Routes ───────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
@@ -132,7 +130,7 @@ def stop_bot():
     if bot_process and bot_process.poll() is None:
         bot_process.terminate()
         bot_status = "stopped"
-        add_log("⛔ Bot stopped by user", "warning")
+        add_log("Bot stopped by user", "warning")
         return jsonify({"ok": True, "message": "Bot stopped"})
     return jsonify({"ok": False, "message": "Bot is not running"})
 
@@ -168,10 +166,10 @@ def get_settings():
 
 if __name__ == "__main__":
     load_persisted()
+    thread = threading.Thread(target=run_bot, daemon=True)
+    thread.start()
     print("\n" + "="*40)
-    print("🤖 RepostAI is starting...")
-    print("👉 Open your browser at: http://localhost:5000")
+    print("RepostAI is starting...")
+    print("Open your browser at: http://localhost:5000")
     print("="*40 + "\n")
-    import webbrowser
-    threading.Timer(1.2, lambda: webbrowser.open("http://localhost:5000")).start()
-    app.run(debug=False, port=5000)
+    app.run(debug=False, host="0.0.0.0", port=5000)
