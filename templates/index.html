@@ -33,7 +33,6 @@
     overflow: hidden;
   }
 
-  /* ── Header ── */
   header {
     display: flex;
     align-items: center;
@@ -92,7 +91,6 @@
     50% { opacity: 0.4; }
   }
 
-  /* ── Layout ── */
   .main {
     display: grid;
     grid-template-columns: 260px 1fr 300px;
@@ -100,7 +98,6 @@
     overflow: hidden;
   }
 
-  /* ── Sidebar ── */
   .sidebar {
     background: var(--surface);
     border-right: 1px solid var(--border);
@@ -120,7 +117,6 @@
     margin-bottom: 10px;
   }
 
-  /* Stats */
   .stat-card {
     background: var(--surface2);
     border: 1px solid var(--border);
@@ -144,7 +140,6 @@
     margin-top: 2px;
   }
 
-  /* Channels */
   .channel-item {
     display: flex;
     align-items: center;
@@ -211,14 +206,12 @@
   }
   .btn-add:hover { opacity: 0.85; }
 
-  /* ── Center ── */
   .center {
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
 
-  /* Control bar */
   .control-bar {
     padding: 16px 24px;
     background: var(--surface);
@@ -273,7 +266,52 @@
     color: var(--muted);
   }
 
-  /* Log area */
+  /* Manual URL bar */
+  .url-bar {
+    padding: 12px 24px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .url-bar input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 14px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .url-bar input:focus { border-color: var(--accent); }
+
+  .btn-process {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 20px;
+    background: linear-gradient(135deg, #ff4778, #ff6b35);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+    white-space: nowrap;
+  }
+
+  .btn-process:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(255,71,120,0.4); }
+  .btn-process:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
   .log-area {
     flex: 1;
     overflow-y: auto;
@@ -314,7 +352,6 @@
   .empty-logs .icon { font-size: 48px; opacity: 0.3; }
   .empty-logs p { font-size: 14px; }
 
-  /* ── Right panel ── */
   .right-panel {
     background: var(--surface);
     border-left: 1px solid var(--border);
@@ -381,11 +418,31 @@
     color: var(--muted);
     line-height: 1.6;
   }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 999;
+    animation: slideIn 0.3s ease;
+  }
+
+  .toast.success { background: #00e676; color: #000; }
+  .toast.error { background: var(--red); color: #fff; }
+  .toast.info { background: var(--accent); color: #fff; }
+
+  @keyframes slideIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
 </style>
 </head>
 <body>
 
-<!-- Header -->
 <header>
   <div class="logo">
     <div class="logo-icon">⚡</div>
@@ -397,12 +454,10 @@
   </div>
 </header>
 
-<!-- Main -->
 <div class="main">
 
   <!-- Sidebar -->
   <div class="sidebar">
-
     <div>
       <div class="section-title">Stats</div>
       <div class="stat-card">
@@ -423,7 +478,6 @@
         <button class="btn-add" onclick="addChannel()">+</button>
       </div>
     </div>
-
   </div>
 
   <!-- Center -->
@@ -433,17 +487,23 @@
       <button class="btn-stop" id="btnStop" onclick="stopBot()" disabled>⏹ Stop</button>
       <span class="last-run" id="lastRun"></span>
     </div>
+
+    <!-- Manual URL bar -->
+    <div class="url-bar">
+      <input type="text" id="manualUrl" placeholder="Paste any YouTube URL to process it instantly..." />
+      <button class="btn-process" id="btnProcess" onclick="processUrl()">⚡ Process Now</button>
+    </div>
+
     <div class="log-area" id="logArea">
       <div class="empty-logs" id="emptyLogs">
         <div class="icon">🤖</div>
-        <p>Press Start Bot to begin monitoring channels</p>
+        <p>Press Start Bot or paste a YouTube URL above</p>
       </div>
     </div>
   </div>
 
   <!-- Right Panel -->
   <div class="right-panel">
-
     <div>
       <div class="section-title">Niche</div>
       <div class="niche-badge">⚽ FIFA World Cup 2026</div>
@@ -489,10 +549,9 @@
     </div>
 
     <div class="tip-card">
-      <div class="tip-title">💡 Pro Tip</div>
-      <p>Keep the bot running during match days for maximum views. FIFA World Cup matches happen daily — each match generates viral clips.</p>
+      <div class="tip-title">💡 Manual Mode</div>
+      <p>Find any YouTube video, paste the URL in the box above, and click Process Now — the AI will cut the best moment and upload it instantly!</p>
     </div>
-
   </div>
 </div>
 
@@ -559,6 +618,50 @@
     fetchStatus();
   }
 
+  async function processUrl() {
+    const input = document.getElementById("manualUrl");
+    const url = input.value.trim();
+    if (!url) { showToast("Paste a YouTube URL first!", "error"); return; }
+    if (!url.includes("youtube.com") && !url.includes("youtu.be")) {
+      showToast("Please paste a valid YouTube URL", "error");
+      return;
+    }
+
+    const btn = document.getElementById("btnProcess");
+    btn.disabled = true;
+    btn.textContent = "Processing...";
+
+    showToast("Processing video... this may take a few minutes!", "info");
+
+    const res = await fetch("/api/process_url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      showToast("Video queued for processing!", "success");
+      input.value = "";
+      startPolling();
+    } else {
+      showToast("Error: " + data.message, "error");
+    }
+
+    btn.disabled = false;
+    btn.textContent = "⚡ Process Now";
+  }
+
+  function showToast(msg, type) {
+    const existing = document.querySelector(".toast");
+    if (existing) existing.remove();
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+  }
+
   function startPolling() {
     if (pollInterval) return;
     pollInterval = setInterval(() => {
@@ -567,7 +670,6 @@
     }, 2000);
   }
 
-  // Channels
   async function loadChannels() {
     const res = await fetch("/api/channels");
     const channels = await res.json();
@@ -612,7 +714,6 @@
     renderChannels(channels);
   }
 
-  // Init
   fetchStatus();
   fetchLogs();
   loadChannels();
