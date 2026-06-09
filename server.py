@@ -1,6 +1,5 @@
 """
-RepostAI Desktop App - Backend Server
-Run this file to start the app, then open http://localhost:5000
+RepostAI Backend Server
 """
 
 from flask import Flask, render_template, jsonify, request
@@ -16,7 +15,6 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Global state
 bot_process = None
 bot_logs = []
 bot_status = "stopped"
@@ -98,6 +96,30 @@ def run_bot():
         bot_status = "stopped"
         add_log("Bot stopped", "warning")
 
+
+def process_single_url(url):
+    import tempfile
+    add_log(f"Processing URL: {url}", "info")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            from pipeline.main import download_video, get_transcript, find_best_moment, cut_short, generate_metadata, upload_to_youtube
+            video_path = download_video(url, tmpdir)
+            if not video_path:
+                add_log("Download failed", "error")
+                return
+            segments = get_transcript(video_path)
+            best = find_best_moment(segments, url)
+            short_path = cut_short(video_path, best["start_time"], best["end_time"], tmpdir)
+            if not short_path:
+                add_log("Cut failed", "error")
+                return
+            metadata = generate_metadata(url, best["reason"])
+            upload_to_youtube(short_path, metadata)
+            add_log("Done! Short uploaded successfully!", "success")
+        except Exception as e:
+            add_log(f"Error: {str(e)}", "error")
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -133,6 +155,16 @@ def stop_bot():
         add_log("Bot stopped by user", "warning")
         return jsonify({"ok": True, "message": "Bot stopped"})
     return jsonify({"ok": False, "message": "Bot is not running"})
+
+@app.route("/api/process_url", methods=["POST"])
+def process_url():
+    data = request.json
+    url = data.get("url")
+    if not url:
+        return jsonify({"ok": False, "message": "No URL provided"})
+    thread = threading.Thread(target=process_single_url, args=(url,), daemon=True)
+    thread.start()
+    return jsonify({"ok": True, "message": "Processing started!"})
 
 @app.route("/api/channels", methods=["GET"])
 def get_channels():
