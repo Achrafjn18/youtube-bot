@@ -12,11 +12,12 @@ from googleapiclient.http import MediaFileUpload
 import openai
 
 sys.stdout.reconfigure(encoding='utf-8')
+
 load_dotenv()
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
-YOUR_CHANNEL_ID = os.getenv("YOUR_CHANNEL_ID")
+OAUTH_TOKEN     = os.getenv("OAUTH_TOKEN")
 
 openai.api_key = OPENAI_API_KEY
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
@@ -27,10 +28,7 @@ CHANNELS_TO_MONITOR = [
     "UCNAf1k0yIjyGu3k9BwAg3lg",
 ]
 
-NICHE         = "FIFA World Cup 2026"
-BRAND_NAME    = "RepostAI"          # change to your channel name
-BRAND_COLOR   = "0x6C47FF"          # purple — change if you want
-WATERMARK_TEXT = "WC2026.Shorts"    # shown bottom-right
+NICHE = "FIFA World Cup 2026"
 
 
 def get_latest_videos(channel_id, max_results=5):
@@ -41,18 +39,16 @@ def get_latest_videos(channel_id, max_results=5):
         maxResults=max_results,
         order="date",
         type="video",
-        publishedAfter=(datetime.now(datetime.UTC if hasattr(datetime, 'UTC') else None) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            if False else
-            (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        publishedAfter=(datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
     response = request.execute()
     videos = []
     for item in response.get("items", []):
         videos.append({
-            "id":        item["id"]["videoId"],
-            "title":     item["snippet"]["title"],
-            "channel":   item["snippet"]["channelTitle"],
-            "url":       f"https://www.youtube.com/watch?v={item['id']['videoId']}",
+            "id":       item["id"]["videoId"],
+            "title":    item["snippet"]["title"],
+            "channel":  item["snippet"]["channelTitle"],
+            "url":      f"https://www.youtube.com/watch?v={item['id']['videoId']}",
             "published": item["snippet"]["publishedAt"]
         })
     print(f"  Found {len(videos)} new videos")
@@ -123,8 +119,7 @@ Respond ONLY in this exact JSON format:
 {{
   "start_time": 45.2,
   "end_time": 103.7,
-  "reason": "Why this moment is the best",
-  "hook": "A short 6-word hook text to show on screen at the start"
+  "reason": "Why this moment is the best"
 }}"""
 
     response = openai.chat.completions.create(
@@ -135,90 +130,15 @@ Respond ONLY in this exact JSON format:
 
     result = json.loads(response.choices[0].message.content)
     print(f"  Best moment: {result['start_time']}s to {result['end_time']}s")
-    print(f"  Hook: {result.get('hook', '')}")
+    print(f"  Reason: {result['reason']}")
     return result
 
 
-def cut_short_with_branding(video_path, start_time, end_time, output_dir, hook_text=""):
-    """
-    Cut the Short AND add:
-    - Vertical 9:16 crop
-    - Hook text at top (first 3 seconds)
-    - Watermark bottom right
-    - Subtle color grade (more vibrant)
-    - Progress bar at bottom
-    """
-    print(f"[CUT] Cutting + branding Short ({start_time}s to {end_time}s)...")
-    output_path = os.path.join(output_dir, "short_branded.mp4")
-    duration = end_time - start_time
-
-    # Find font — use Arial on Windows, fallback to DejaVu
-    font_path = "C\\\\:/Windows/Fonts/arialbd.ttf"   # Windows bold Arial
-    fallback   = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-
-    # Safe hook text (escape special chars for ffmpeg)
-    safe_hook = hook_text.replace("'", "").replace(":", "").replace("\\", "")[:40]
-    safe_brand = WATERMARK_TEXT.replace("'", "")
-
-    # FFmpeg filter chain:
-    # 1. Scale to 1080x1920 vertical
-    # 2. Boost saturation/contrast slightly
-    # 3. Add hook text top center (first 3s)
-    # 4. Add watermark bottom right (full duration)
-    # 5. Add thin progress bar at bottom
-    vf = (
-        # Step 1 — vertical crop
-        "scale=1080:1920:force_original_aspect_ratio=decrease,"
-        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,"
-        "setsar=1,"
-        # Step 2 — color grade (more vivid)
-        "eq=saturation=1.3:contrast=1.05:brightness=0.02,"
-        # Step 3 — hook text (shows first 3 seconds)
-        f"drawtext=text='{safe_hook}'"
-        f":fontsize=52"
-        f":fontcolor=white"
-        f":borderw=3:bordercolor=black"
-        f":x=(w-text_w)/2:y=120"
-        f":enable='between(t,0,3)',"
-        # Step 4 — watermark bottom right (always visible)
-        f"drawtext=text='{safe_brand}'"
-        f":fontsize=28"
-        f":fontcolor=white@0.7"
-        f":borderw=2:bordercolor=black@0.5"
-        f":x=w-text_w-20:y=h-60,"
-        # Step 5 — progress bar at very bottom
-        f"drawbox=x=0:y=h-8:w=iw*t/{duration}:h=8:color=9B59B6@0.9:t=fill"
-    )
-
-    cmd = [
-        "ffmpeg",
-        "-ss", str(start_time),
-        "-i", video_path,
-        "-t", str(duration),
-        "-vf", vf,
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-movflags", "+faststart",
-        output_path, "-y"
-    ]
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"  [ERROR] Branding failed, trying simple cut...")
-        # Fallback — simple cut without branding
-        return cut_simple(video_path, start_time, end_time, output_dir)
-
-    print(f"  Branded Short saved: {output_path}")
-    return output_path
-
-
-def cut_simple(video_path, start_time, end_time, output_dir):
-    """Fallback simple cut without text overlays"""
+def cut_short(video_path, start_time, end_time, output_dir):
+    print(f"[CUT] Cutting Short ({start_time}s to {end_time}s)...")
     output_path = os.path.join(output_dir, "short.mp4")
     duration = end_time - start_time
+
     cmd = [
         "ffmpeg",
         "-ss", str(start_time),
@@ -228,28 +148,38 @@ def cut_simple(video_path, start_time, end_time, output_dir):
         "-c:v", "libx264",
         "-c:a", "aac",
         "-b:a", "128k",
+        "-movflags", "+faststart",
         output_path, "-y"
     ]
-    subprocess.run(cmd, capture_output=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  [ERROR] Cut failed: {result.stderr}")
+        return None
+    print(f"  Short saved: {output_path}")
     return output_path
 
 
-def generate_metadata(video_title, reason, hook):
+def generate_metadata(video_title, reason):
     print("[META] Generating metadata...")
 
     prompt = f"""You are a viral YouTube Shorts expert for {NICHE} content.
 
 Original video: "{video_title}"
 Why this clip is great: "{reason}"
-Hook shown on screen: "{hook}"
 
 Generate optimized YouTube Shorts metadata.
 Respond ONLY in this exact JSON format:
 {{
   "title": "Catchy title under 60 chars with emoji",
-  "description": "2-3 lines engaging description with relevant hashtags including #Shorts #WorldCup2026 #FIFA",
-  "tags": ["FIFA", "WorldCup2026", "WorldCup", "Football", "Soccer", "Shorts", "Goals", "Highlights", "FIFA2026", "WorldCupShorts"]
-}}"""
+  "description": "2-3 lines description with relevant hashtags",
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6", "tag7", "tag8", "tag9", "tag10"]
+}}
+
+Rules:
+- Title must be under 60 characters
+- Include #Shorts in description
+- Tags must be relevant to FIFA World Cup 2026
+- Make it viral and clickable"""
 
     response = openai.chat.completions.create(
         model="gpt-4o",
@@ -267,14 +197,13 @@ def upload_to_youtube(short_path, metadata):
     from googleapiclient.discovery import build as oauth_build
     from google.oauth2.credentials import Credentials
 
-  import tempfile
-    oauth_data = os.getenv("OAUTH_TOKEN")
-    if oauth_data:
+    if OAUTH_TOKEN:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            f.write(oauth_data)
+            f.write(OAUTH_TOKEN)
             token_path = f.name
     else:
         token_path = "oauth_token.json"
+
     creds = Credentials.from_authorized_user_file(token_path)
     youtube_upload = oauth_build("youtube", "v3", credentials=creds)
 
@@ -304,7 +233,8 @@ def upload_to_youtube(short_path, metadata):
         if status:
             print(f"  Uploading... {int(status.progress() * 100)}%")
 
-    print(f"  Uploaded! https://youtube.com/watch?v={response['id']}")
+    print(f"  Uploaded! Video ID: {response['id']}")
+    print(f"  https://youtube.com/watch?v={response['id']}")
     return response["id"]
 
 
@@ -334,34 +264,20 @@ def run_pipeline():
                         if not video_path:
                             continue
 
-                        segments  = get_transcript(video_path)
-                        best      = find_best_moment(segments, video["title"])
-                        hook      = best.get("hook", "Watch this amazing moment")
+                        segments = get_transcript(video_path)
+                        best = find_best_moment(segments, video["title"])
 
-                        short_path = cut_short_with_branding(
+                        short_path = cut_short(
                             video_path,
                             best["start_time"],
                             best["end_time"],
-                            tmpdir,
-                            hook_text=hook
+                            tmpdir
                         )
                         if not short_path:
                             continue
 
-                        metadata = generate_metadata(
-                            video["title"],
-                            best["reason"],
-                            hook
-                        )
-
+                        metadata = generate_metadata(video["title"], best["reason"])
                         upload_to_youtube(short_path, metadata)
-
-                        # Save a local copy too
-                        import shutil
-                        os.makedirs("shorts", exist_ok=True)
-                        shutil.copy(short_path, f"shorts/{video['id']}_short.mp4")
-                        with open(f"shorts/{video['id']}_metadata.json", "w") as f:
-                            json.dump(metadata, f, indent=2)
 
                     processed.add(video["id"])
 
