@@ -39,7 +39,7 @@ def get_latest_videos(channel_id, max_results=5):
         maxResults=max_results,
         order="date",
         type="video",
-        publishedAfter=(datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        publishedAfter=(datetime.utcnow() - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
     response = request.execute()
     videos = []
